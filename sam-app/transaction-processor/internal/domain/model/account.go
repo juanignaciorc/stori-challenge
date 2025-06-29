@@ -6,13 +6,13 @@ import (
 
 // MonthlyStats represents transaction statistics for a specific month
 type MonthlyStats struct {
-	Month             time.Month
-	Year              int
-	TransactionCount  int
-	TotalCredit       float64
-	TotalDebit        float64
-	CreditCount       int
-	DebitCount        int
+	Month            time.Month
+	Year             int
+	TransactionCount int
+	TotalCredit      float64
+	TotalDebit       float64
+	CreditCount      int
+	DebitCount       int
 }
 
 // Account represents a financial account with transactions
@@ -34,14 +34,14 @@ func NewAccount() *Account {
 // AddTransaction adds a transaction to the account and updates the balance and stats
 func (a *Account) AddTransaction(tx *Transaction) {
 	a.Transactions = append(a.Transactions, tx)
-	
+
 	// Update balance
 	if tx.IsCredit {
 		a.Balance += tx.Amount
 	} else {
 		a.Balance -= tx.Amount
 	}
-	
+
 	// Update monthly stats
 	monthKey := formatMonthKey(tx.Date)
 	stats, exists := a.MonthlyStats[monthKey]
@@ -52,9 +52,9 @@ func (a *Account) AddTransaction(tx *Transaction) {
 		}
 		a.MonthlyStats[monthKey] = stats
 	}
-	
+
 	stats.TransactionCount++
-	
+
 	if tx.IsCredit {
 		stats.TotalCredit += tx.Amount
 		stats.CreditCount++
@@ -72,12 +72,12 @@ func (a *Account) GetTotalBalance() float64 {
 // GetMonthlyTransactionCounts returns a map of month names to transaction counts
 func (a *Account) GetMonthlyTransactionCounts() map[string]int {
 	result := make(map[string]int)
-	
+
 	for _, stats := range a.MonthlyStats {
 		monthName := stats.Month.String()
 		result[monthName] = stats.TransactionCount
 	}
-	
+
 	return result
 }
 
@@ -85,16 +85,16 @@ func (a *Account) GetMonthlyTransactionCounts() map[string]int {
 func (a *Account) GetAverageCreditAmount() float64 {
 	var totalCredit float64
 	var creditCount int
-	
+
 	for _, stats := range a.MonthlyStats {
 		totalCredit += stats.TotalCredit
 		creditCount += stats.CreditCount
 	}
-	
+
 	if creditCount == 0 {
 		return 0
 	}
-	
+
 	return totalCredit / float64(creditCount)
 }
 
@@ -102,16 +102,16 @@ func (a *Account) GetAverageCreditAmount() float64 {
 func (a *Account) GetAverageDebitAmount() float64 {
 	var totalDebit float64
 	var debitCount int
-	
+
 	for _, stats := range a.MonthlyStats {
 		totalDebit += stats.TotalDebit
 		debitCount += stats.DebitCount
 	}
-	
+
 	if debitCount == 0 {
 		return 0
 	}
-	
+
 	return totalDebit / float64(debitCount)
 }
 
