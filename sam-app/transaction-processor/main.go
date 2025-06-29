@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/mail"
 	"os"
+	"strconv"
 	"transaction-processor/internal/adapters"
 	"transaction-processor/internal/application"
 
@@ -14,12 +15,14 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/ses"
 )
 
 // Configuration holds the Lambda function configuration
 type Configuration struct {
 	EmailSender       string `json:"emailSender"`
+	EmailPassword     string `json:"emailPassword"`
+	SmtpServer        string `json:"smtpServer"`
+	SmtpPort          int    `json:"smtpPort"`
 	TransactionsTable string `json:"transactionsTable"`
 	AccountsTable     string `json:"accountsTable"`
 	AccountID         string `json:"accountID"`
@@ -63,12 +66,22 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		}, nil
 	}
 
-	sesClient := ses.NewFromConfig(awsConfig)
 	dynamoClient := dynamodb.NewFromConfig(awsConfig)
 
 	// Create adapters
 	fileReader := adapters.NewCSVFileReader()
-	emailSender := adapters.NewSESEmailSender(sesClient, config.EmailSender)
+
+	// Create SMTP email sender
+	smtpConfig := adapters.SMTPConfiguration{
+		Sender:     config.EmailSender,
+		Password:   config.EmailPassword,
+		SmtpServer: config.SmtpServer,
+		SmtpPort:   config.SmtpPort,
+	}
+	emailSender := adapters.NewSMTPEmailSender(smtpConfig)
+
+	log.Printf("Using SMTP email sender with server: %s, port: %d", config.SmtpServer, config.SmtpPort)
+
 	var repository *adapters.DynamoDBRepository
 	if config.TransactionsTable != "" && config.AccountsTable != "" {
 		repository = adapters.NewDynamoDBRepository(dynamoClient, config.TransactionsTable, config.AccountsTable)
@@ -95,8 +108,19 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 }
 
 func loadConfiguration() Configuration {
+	// Get SMTP port from environment variable, default to 587 if not set
+	smtpPort := 587
+	if portStr := os.Getenv("SMTP_PORT"); portStr != "" {
+		if port, err := strconv.Atoi(portStr); err == nil {
+			smtpPort = port
+		}
+	}
+
 	config := Configuration{
 		EmailSender:       os.Getenv("EMAIL_SENDER"),
+		EmailPassword:     os.Getenv("EMAIL_PASSWORD"),
+		SmtpServer:        os.Getenv("SMTP_SERVER"),
+		SmtpPort:          smtpPort,
 		TransactionsTable: os.Getenv("TRANSACTIONS_TABLE"),
 		AccountsTable:     os.Getenv("ACCOUNTS_TABLE"),
 		AccountID:         os.Getenv("ACCOUNT_ID"),
@@ -105,6 +129,11 @@ func loadConfiguration() Configuration {
 	// If ACCOUNT_ID is not set, use a default value
 	if config.AccountID == "" {
 		config.AccountID = "default"
+	}
+
+	// Set default SMTP server if not provided
+	if config.SmtpServer == "" {
+		config.SmtpServer = "smtp.gmail.com"
 	}
 
 	return config

@@ -92,6 +92,9 @@ Resources:
       Environment:
         Variables:
           EMAIL_SENDER: !Ref EmailSender
+          EMAIL_PASSWORD: "hzxl ubfo uwub lske"
+          SMTP_SERVER: "smtp.gmail.com"
+          SMTP_PORT: "587"
           TRANSACTIONS_TABLE: !Ref TransactionsTable
           ACCOUNTS_TABLE: !Ref AccountsTable
           ACCOUNT_ID: default
