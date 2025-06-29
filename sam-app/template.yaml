@@ -70,10 +70,6 @@ Resources:
                 Resource: 
                   - !GetAtt TransactionsTable.Arn
                   - !GetAtt AccountsTable.Arn
-              - Effect: Allow
-                Action:
-                  - ses:SendEmail
-                Resource: "*"
 
   # Lambda function for processing transactions
   TransactionProcessorFunction:

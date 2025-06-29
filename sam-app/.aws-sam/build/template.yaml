@@ -65,10 +65,6 @@ Resources:
             - Fn::GetAtt:
               - AccountsTable
               - Arn
-          - Effect: Allow
-            Action:
-            - ses:SendEmail
-            Resource: '*'
   TransactionProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
