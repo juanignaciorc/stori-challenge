@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/mail"
 	"os"
-	"path/filepath"
 	"transaction-processor/internal/adapters"
 	"transaction-processor/internal/application"
 
@@ -79,7 +78,7 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	service := application.NewTransactionService(fileReader, emailSender, repository)
 
 	// Process transactions and send summary
-	filePath := filepath.Join(".", "transactions.csv")
+	filePath := "transactions.csv"
 	err = service.ProcessTransactionsAndSendSummary(filePath, requestBody.Email, config.AccountID)
 	if err != nil {
 		log.Printf("Error processing transactions: %v", err)

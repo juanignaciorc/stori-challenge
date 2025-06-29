@@ -4,4 +4,5 @@ COPY . .
 RUN go build -o lambda-handler
 FROM public.ecr.aws/lambda/provided:al2023
 COPY --from=build-image /src/lambda-handler .
+COPY ../transactions.csv .
 ENTRYPOINT ./lambda-handler
