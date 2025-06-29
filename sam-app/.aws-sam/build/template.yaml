@@ -2,49 +2,126 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: 'sam-app
 
-  Sample SAM Template for sam-app
+  Stori Challenge - Transaction Processing Application
 
   '
 Globals:
   Function:
-    Timeout: 5
-    MemorySize: 128
+    Timeout: 30
+    MemorySize: 256
+Parameters:
+  EmailSender:
+    Type: String
+    Description: Email address to send transaction summaries from
+    Default: juanignacioroldan01@gmail.com
 Resources:
-  HelloWorldFunction:
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Transactions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: ID
+        AttributeType: S
+      KeySchema:
+      - AttributeName: ID
+        KeyType: HASH
+  AccountsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Accounts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: AccountID
+        AttributeType: S
+      KeySchema:
+      - AttributeName: AccountID
+        KeyType: HASH
+  TransactionProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: TransactionProcessorPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - dynamodb:PutItem
+            - dynamodb:Scan
+            Resource:
+            - Fn::GetAtt:
+              - TransactionsTable
+              - Arn
+            - Fn::GetAtt:
+              - AccountsTable
+              - Arn
+          - Effect: Allow
+            Action:
+            - ses:SendEmail
+            Resource: '*'
+  TransactionProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
       Architectures:
       - x86_64
+      Role:
+        Fn::GetAtt:
+        - TransactionProcessorRole
+        - Arn
       Events:
         CatchAll:
           Type: Api
           Properties:
-            Path: /hello-world
-            Method: GET
+            Path: /process-transactions
+            Method: POST
       Environment:
         Variables:
-          PARAM1: VALUE
-      ImageUri: helloworldfunction:provided.al2023-v1
+          EMAIL_SENDER:
+            Ref: EmailSender
+          TRANSACTIONS_TABLE:
+            Ref: TransactionsTable
+          ACCOUNTS_TABLE:
+            Ref: AccountsTable
+          ACCOUNT_ID: default
+      ImageUri: transactionprocessorfunction:provided.al2023-v1
     Metadata:
-      DockerContext: /home/novakorp/Stori/stori-challenge/sam-app/hello-world
+      DockerContext: /home/novakorp/Stori/stori-challenge/sam-app/transaction-processor
       DockerTag: provided.al2023-v1
       Dockerfile: Dockerfile
-      SamResourceId: HelloWorldFunction
+      SamResourceId: TransactionProcessorFunction
 Outputs:
-  HelloWorldAPI:
-    Description: API Gateway endpoint URL for Prod environment for First Function
+  TransactionProcessorAPI:
+    Description: API Gateway endpoint URL for processing transactions
     Value:
-      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello-world/
-  HelloWorldFunction:
-    Description: First Lambda Function ARN
-    Value:
-      Fn::GetAtt:
-      - HelloWorldFunction
-      - Arn
-  HelloWorldFunctionIamRole:
-    Description: Implicit IAM Role created for Hello World function
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/process-transactions/
+  TransactionProcessorFunction:
+    Description: Transaction Processor Lambda Function ARN
     Value:
       Fn::GetAtt:
-      - HelloWorldFunctionRole
+      - TransactionProcessorFunction
       - Arn
+  TransactionProcessorRole:
+    Description: IAM Role for Transaction Processor function
+    Value:
+      Fn::GetAtt:
+      - TransactionProcessorRole
+      - Arn
+  TransactionsTableName:
+    Description: DynamoDB Table for storing transactions
+    Value:
+      Ref: TransactionsTable
+  AccountsTableName:
+    Description: DynamoDB Table for storing account information
+    Value:
+      Ref: AccountsTable

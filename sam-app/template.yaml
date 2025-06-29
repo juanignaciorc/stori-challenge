@@ -2,46 +2,124 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   sam-app
-  
-  Sample SAM Template for sam-app
+
+  Stori Challenge - Transaction Processing Application
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 5
-    MemorySize: 128
+    Timeout: 30
+    MemorySize: 256
+
+Parameters:
+  EmailSender:
+    Type: String
+    Description: Email address to send transaction summaries from
+    Default: juanignacioroldan01@gmail.com
+
 
 Resources:
-  HelloWorldFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+
+  # DynamoDB Tables for storing transactions and account information
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Transactions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ID
+          KeyType: HASH
+
+  AccountsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Accounts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: AccountID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: AccountID
+          KeyType: HASH
+
+  # IAM Role for the Lambda function
+  TransactionProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TransactionProcessorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:Scan
+                Resource: 
+                  - !GetAtt TransactionsTable.Arn
+                  - !GetAtt AccountsTable.Arn
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: "*"
+
+  # Lambda function for processing transactions
+  TransactionProcessorFunction:
+    Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
       Architectures:
         - x86_64
+      Role: !GetAtt TransactionProcessorRole.Arn
       Events:
         CatchAll:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
-            Path: /hello-world
-            Method: GET
-      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+            Path: /process-transactions
+            Method: POST
+      Environment:
         Variables:
-          PARAM1: VALUE
+          EMAIL_SENDER: !Ref EmailSender
+          TRANSACTIONS_TABLE: !Ref TransactionsTable
+          ACCOUNTS_TABLE: !Ref AccountsTable
+          ACCOUNT_ID: default
     Metadata:
       DockerTag: provided.al2023-v1
-      DockerContext: ./hello-world
+      DockerContext: ./transaction-processor
       Dockerfile: Dockerfile
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
   # Find out more about other implicit resources you can reference within SAM
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  HelloWorldAPI:
-    Description: "API Gateway endpoint URL for Prod environment for First Function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello-world/"
-  HelloWorldFunction:
-    Description: "First Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  TransactionProcessorAPI:
+    Description: "API Gateway endpoint URL for processing transactions"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/process-transactions/"
+
+  TransactionProcessorFunction:
+    Description: "Transaction Processor Lambda Function ARN"
+    Value: !GetAtt TransactionProcessorFunction.Arn
+
+  TransactionProcessorRole:
+    Description: "IAM Role for Transaction Processor function"
+    Value: !GetAtt TransactionProcessorRole.Arn
+
+  TransactionsTableName:
+    Description: "DynamoDB Table for storing transactions"
+    Value: !Ref TransactionsTable
+
+  AccountsTableName:
+    Description: "DynamoDB Table for storing account information"
+    Value: !Ref AccountsTable
