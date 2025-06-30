@@ -1,205 +1,89 @@
-package adapters
+package adapters_test
 
 import (
-	"gopkg.in/mail.v2"
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
-	"transaction-processor/internal/ports"
+	"time"
+	"transaction-processor/internal/adapters"
 )
 
-func TestNewSMTPEmailSender(t *testing.T) {
-	type args struct {
-		conf SMTPConfiguration
+func TestCSVFileReader_ReadTransactions(t *testing.T) {
+	// Create a temporary directory for the test file
+	tempDir := t.TempDir()
+	testFilePath := filepath.Join(tempDir, "test_transactions.csv")
+
+	// Define the CSV content with 4 data rows
+	csvContent := `Id,Date,Transaction
+0,7/15,+60.5
+1,7/28,-10.3
+2,8/2,-20.46
+3,8/13,+10`
+
+	// Write the content to the temporary file
+	err := os.WriteFile(testFilePath, []byte(csvContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test CSV file: %v", err)
 	}
 
-	// Create test configuration
-	testConf := SMTPConfiguration{
-		Sender:     "test@example.com",
-		Password:   "password123",
-		SmtpServer: "smtp.example.com",
-		SmtpPort:   587,
-	}
-
-	// Create expected dialer
-	expectedDialer := mail.NewDialer(testConf.SmtpServer, testConf.SmtpPort, testConf.Sender, testConf.Password)
-	expectedDialer.StartTLSPolicy = mail.MandatoryStartTLS
-
-	tests := []struct {
-		name string
-		args args
-		want *SMTPClient
-	}{
-		{
-			name: "Creates SMTP client with correct configuration",
-			args: args{
-				conf: testConf,
-			},
-			want: &SMTPClient{
-				dialer: expectedDialer,
-				sender: testConf.Sender,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewSMTPEmailSender(tt.args.conf)
-
-			// Check sender field
-			if got.sender != tt.want.sender {
-				t.Errorf("NewSMTPEmailSender().sender = %v, want %v", got.sender, tt.want.sender)
-			}
-
-			// Check dialer fields individually since we can't directly compare dialers
-			if got.dialer.Host != tt.want.dialer.Host {
-				t.Errorf("NewSMTPEmailSender().dialer.Host = %v, want %v", got.dialer.Host, tt.want.dialer.Host)
-			}
-			if got.dialer.Port != tt.want.dialer.Port {
-				t.Errorf("NewSMTPEmailSender().dialer.Port = %v, want %v", got.dialer.Port, tt.want.dialer.Port)
-			}
-			if got.dialer.Username != tt.want.dialer.Username {
-				t.Errorf("NewSMTPEmailSender().dialer.Username = %v, want %v", got.dialer.Username, tt.want.dialer.Username)
-			}
-			if got.dialer.Password != tt.want.dialer.Password {
-				t.Errorf("NewSMTPEmailSender().dialer.Password = %v, want %v", got.dialer.Password, tt.want.dialer.Password)
-			}
-			if got.dialer.StartTLSPolicy != tt.want.dialer.StartTLSPolicy {
-				t.Errorf("NewSMTPEmailSender().dialer.StartTLSPolicy = %v, want %v", got.dialer.StartTLSPolicy, tt.want.dialer.StartTLSPolicy)
-			}
-		})
-	}
-}
-
-// TestSMTPClient_SendSummaryEmail_Integration tests the SendSummaryEmail method
-// Note: This is an integration test that would actually send an email if run.
-// It's skipped by default to avoid sending actual emails during testing.
-func TestSMTPClient_SendSummaryEmail_Integration(t *testing.T) {
-	// Skip this test by default to avoid sending actual emails
-	t.Skip("Skipping integration test that would send an actual email")
-
-	// Create test data
-	testSummary := ports.EmailSummary{
-		TotalBalance: 1234.56,
-		MonthlyTransactionCounts: map[string]int{
-			"January":  5,
-			"February": 8,
-		},
-		AverageCreditAmount: 100.25,
-		AverageDebitAmount:  50.75,
-	}
-
-	testRecipient := "test@example.com"
-
-	// Create a real SMTP client with test configuration
-	// Note: These credentials won't work, they're just for the test
-	conf := SMTPConfiguration{
-		Sender:     "test@example.com",
-		Password:   "password123",
-		SmtpServer: "smtp.example.com",
-		SmtpPort:   587,
-	}
-
-	client := NewSMTPEmailSender(conf)
+	// Create an instance of CSVFileReader
+	reader := adapters.NewCSVFileReader()
 
 	// Call the method under test
-	err := client.SendSummaryEmail(testRecipient, testSummary)
-
-	// Check there was no error
+	transactions, err := reader.ReadTransactions(testFilePath)
 	if err != nil {
-		t.Errorf("SendSummaryEmail() error = %v, want nil", err)
-	}
-}
-
-func TestSMTPClient_generateEmailBody(t *testing.T) {
-	type fields struct {
-		dialer *mail.Dialer
-		sender string
-	}
-	type args struct {
-		recipient string
-		summary   ports.EmailSummary
+		t.Fatalf("ReadTransactions failed: %v", err)
 	}
 
-	// Create test data
-	testSummary := ports.EmailSummary{
-		TotalBalance: 1234.56,
-		MonthlyTransactionCounts: map[string]int{
-			"January":  5,
-			"February": 8,
-		},
-		AverageCreditAmount: 100.25,
-		AverageDebitAmount:  50.75,
+	// Get the current year to correctly format expected dates
+	currentYear := time.Now().Year()
+
+	// Assertions for the number of transactions
+	if len(transactions) != 4 {
+		t.Errorf("Expected 4 transactions, got %d", len(transactions))
 	}
 
-	// We don't need to test the exact HTML output, just that it contains the expected data
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantContains []string
-		wantErr bool
-	}{
-		{
-			name: "Generates HTML email with correct data",
-			fields: fields{
-				dialer: nil, // Not used in generateEmailBody
-				sender: "test@example.com",
-			},
-			args: args{
-				recipient: "recipient@example.com",
-				summary:   testSummary,
-			},
-			wantContains: []string{
-				"$1234.56", // Total balance
-				"January", "5", // Monthly transaction count
-				"February", "8", // Monthly transaction count
-				"$100.25", // Average credit amount
-				"$50.75", // Average debit amount
-			},
-			wantErr: false,
-		},
-		{
-			name: "Handles empty monthly transaction counts",
-			fields: fields{
-				dialer: nil,
-				sender: "test@example.com",
-			},
-			args: args{
-				recipient: "recipient@example.com",
-				summary: ports.EmailSummary{
-					TotalBalance:             500.00,
-					MonthlyTransactionCounts: map[string]int{},
-					AverageCreditAmount:      75.50,
-					AverageDebitAmount:       25.25,
-				},
-			},
-			wantContains: []string{
-				"$500.00", // Total balance
-				"$75.50",  // Average credit amount
-				"$25.25",  // Average debit amount
-			},
-			wantErr: false,
-		},
+	// Check first transaction: +60.5 (Credit)
+	expectedDate1 := time.Date(currentYear, time.July, 15, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	if transactions[0].ID != "0" || transactions[0].Date.Format("2006-01-02") != expectedDate1 || transactions[0].Amount != 60.5 || !transactions[0].IsCredit {
+		t.Errorf("First transaction mismatch: Expected ID '0', Date '%s', Amount '60.5', IsCredit 'true', got %+v", expectedDate1, transactions[0])
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &SMTPClient{
-				dialer: tt.fields.dialer,
-				sender: tt.fields.sender,
-			}
-			got, err := s.generateEmailBody(tt.args.recipient, tt.args.summary)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("generateEmailBody() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			// Check that the generated HTML contains all expected strings
-			for _, wantStr := range tt.wantContains {
-				if !strings.Contains(got, wantStr) {
-					t.Errorf("generateEmailBody() output doesn't contain expected string: %s", wantStr)
-				}
-			}
-		})
+	// Check second transaction: -10.3 (Debit)
+	expectedDate2 := time.Date(currentYear, time.July, 28, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	if transactions[1].ID != "1" || transactions[1].Date.Format("2006-01-02") != expectedDate2 || transactions[1].Amount != 10.3 || transactions[1].IsCredit {
+		t.Errorf("Second transaction mismatch: Expected ID '1', Date '%s', Amount '10.3', IsCredit 'false', got %+v", expectedDate2, transactions[1])
 	}
+
+	// Check third transaction: -20.46 (Debit)
+	expectedDate3 := time.Date(currentYear, time.August, 2, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	if transactions[2].ID != "2" || transactions[2].Date.Format("2006-01-02") != expectedDate3 || transactions[2].Amount != 20.46 || transactions[2].IsCredit {
+		t.Errorf("Third transaction mismatch: Expected ID '2', Date '%s', Amount '20.46', IsCredit 'false', got %+v", expectedDate3, transactions[2])
+	}
+
+	// Check fourth transaction: +10 (Credit)
+	expectedDate4 := time.Date(currentYear, time.August, 13, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	if transactions[3].ID != "3" || transactions[3].Date.Format("2006-01-02") != expectedDate4 || transactions[3].Amount != 10.0 || !transactions[3].IsCredit {
+		t.Errorf("Fourth transaction mismatch: Expected ID '3', Date '%s', Amount '10.0', IsCredit 'true', got %+v", expectedDate4, transactions[3])
+	}
+
+	// --- Test Case: Invalid header ---
+	t.Run("invalid header", func(t *testing.T) {
+		invalidCsvContent := `WrongId,Date,Transaction`
+		invalidFilePath := filepath.Join(tempDir, "invalid_header.csv")
+		os.WriteFile(invalidFilePath, []byte(invalidCsvContent), 0644)
+
+		_, err := reader.ReadTransactions(invalidFilePath)
+		if err == nil {
+			t.Error("Expected an error for invalid header, got nil")
+		}
+	})
+
+	// --- Test Case: Non-existent file ---
+	t.Run("non-existent file", func(t *testing.T) {
+		_, err := reader.ReadTransactions(filepath.Join(tempDir, "non_existent.csv"))
+		if err == nil {
+			t.Error("Expected an error for non-existent file, got nil")
+		}
+	})
 }

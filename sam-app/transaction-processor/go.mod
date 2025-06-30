@@ -1,12 +1,15 @@
 module transaction-processor
 
-go 1.19
+go 1.23
+
+toolchain go1.23.10
 
 require (
 	github.com/aws/aws-lambda-go v1.36.1
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.39
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.21.5
+	go.uber.org/mock v0.5.2
 	gopkg.in/mail.v2 v2.3.1
 )
 
