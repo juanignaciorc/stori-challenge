@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.39
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.21.5
+	github.com/go-playground/validator/v10 v10.19.0
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/mock v0.5.2
 	gopkg.in/mail.v2 v2.3.1

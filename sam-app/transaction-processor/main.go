@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/go-playground/validator/v10"
 	"log"
-	"net/mail"
 	"os"
 	"strconv"
 	"transaction-processor/internal/adapters"
@@ -30,7 +30,7 @@ type Configuration struct {
 
 // RequestBody represents the expected structure of the POST request body
 type RequestBody struct {
-	Email string `json:"email"`
+	Email string `json:"email" validate:"required,email"`
 }
 
 func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -44,8 +44,9 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		}, nil
 	}
 
-	// Validate email format
-	if _, err := mail.ParseAddress(requestBody.Email); err != nil {
+	// Validate email format using validator
+	validate := validator.New()
+	if err := validate.Struct(requestBody); err != nil {
 		log.Printf("Invalid email format: %v", err)
 		return events.APIGatewayProxyResponse{
 			StatusCode: 400,
