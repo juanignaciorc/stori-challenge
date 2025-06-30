@@ -1,6 +1,6 @@
 # Stori Transaction Processor
 
-A serverless application that processes transaction files, calculates account statistics, and sends summary emails. Built with AWS Lambda, API Gateway, S3, DynamoDB, and SES.
+A serverless application that processes transaction files, calculates account statistics, and sends summary emails. Built with AWS Lambda, API Gateway, S3, DynamoDB, and SMTP.
 
 ## Architecture
 
