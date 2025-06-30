@@ -140,7 +140,7 @@ func (s *SMTPClient) generateEmailBody(recipient string, summary ports.EmailSumm
     
     <h2>Average Transaction Amounts</h2>
     <table>
-        <tr><td>Average debit amount:</td><td>${{printf "%.2f" .AverageDebitAmount}}</td></tr>
+        <tr><td>Average debit amount:</td><td>$-{{printf "%.2f" .AverageDebitAmount}}</td></tr>
         <tr><td>Average credit amount:</td><td>${{printf "%.2f" .AverageCreditAmount}}</td></tr>
     </table>
 </body>
