@@ -15,7 +15,7 @@ import (
 
 // DynamoDBRepository implements the TransactionRepository port using DynamoDB
 type DynamoDBRepository struct {
-	dynamoClient      *dynamodb.Client
+	dynamoClient      ports.DynamoDBClient
 	transactionsTable string
 	accountsTable     string
 }

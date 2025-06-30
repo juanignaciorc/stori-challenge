@@ -1,11 +1,13 @@
 module transaction-processor
 
 go 1.23
+
 require (
 	github.com/aws/aws-lambda-go v1.36.1
 	github.com/aws/aws-sdk-go-v2 v1.21.0
 	github.com/aws/aws-sdk-go-v2/config v1.18.39
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.21.5
+	github.com/stretchr/testify v1.9.0
 	go.uber.org/mock v0.5.2
 	gopkg.in/mail.v2 v2.3.1
 )
@@ -23,6 +25,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.15.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.21.5 // indirect
 	github.com/aws/smithy-go v1.14.2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

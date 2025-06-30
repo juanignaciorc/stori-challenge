@@ -1,8 +1,15 @@
 package ports
 
 import (
+	"context"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"transaction-processor/internal/domain/model"
 )
+
+type DynamoDBClient interface {
+	PutItem(ctx context.Context, params *dynamodb.PutItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	Scan(ctx context.Context, params *dynamodb.ScanInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error)
+}
 
 // TransactionRepository defines the interface for storing and retrieving transactions
 type TransactionRepository interface {

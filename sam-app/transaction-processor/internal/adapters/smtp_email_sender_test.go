@@ -1,11 +1,10 @@
-package adapters_test
+package adapters
 
 import (
 	"errors"
 	"strings"
 	"testing"
-	"transaction-processor/internal/adapters"
-	"transaction-processor/internal/adapters/mocks"
+	"transaction-processor/internal/mocks"
 	"transaction-processor/internal/ports"
 
 	"go.uber.org/mock/gomock"
@@ -117,7 +116,7 @@ func TestSMTPClient_SendSummaryEmail(t *testing.T) {
 
 			tt.setupMocks(mockDialer, mockFactory, mockMsg)
 
-			smtpClient := adapters.NewSMTPEmailSenderWithDependencies(
+			smtpClient := NewSMTPEmailSenderWithDependencies(
 				mockDialer,
 				mockFactory,
 				"sender@example.com",
@@ -205,7 +204,7 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 				mockDialer := mocks.NewMockMailDialer(ctrl)
 				mockFactory := mocks.NewMockMailMessageFactory(ctrl)
 
-				client := adapters.NewSMTPEmailSenderWithDependencies(
+				client := NewSMTPEmailSenderWithDependencies(
 					mockDialer,
 					mockFactory,
 					"sender@example.com",
@@ -233,7 +232,7 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 				}).Times(1)
 			mockDialer.EXPECT().DialAndSend(gomock.Any()).Return(nil).Times(1)
 
-			client := adapters.NewSMTPEmailSenderWithDependencies(
+			client := NewSMTPEmailSenderWithDependencies(
 				mockDialer,
 				mockFactory,
 				"sender@example.com",
@@ -263,14 +262,14 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 }
 
 func TestNewSMTPEmailSender(t *testing.T) {
-	conf := adapters.SMTPConfiguration{
+	conf := SMTPConfiguration{
 		Sender:     "test@example.com",
 		Password:   "password",
 		SmtpServer: "smtp.example.com",
 		SmtpPort:   587,
 	}
 
-	client := adapters.NewSMTPEmailSender(conf)
+	client := NewSMTPEmailSender(conf)
 
 	if client == nil {
 		t.Error("expected client to be created, got nil")

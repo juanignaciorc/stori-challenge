@@ -1,11 +1,10 @@
-package adapters_test
+package adapters
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-	"transaction-processor/internal/adapters"
 )
 
 func TestCSVFileReader_ReadTransactions(t *testing.T) {
@@ -27,7 +26,7 @@ func TestCSVFileReader_ReadTransactions(t *testing.T) {
 	}
 
 	// Create an instance of CSVFileReader
-	reader := adapters.NewCSVFileReader()
+	reader := NewCSVFileReader()
 
 	// Call the method under test
 	transactions, err := reader.ReadTransactions(testFilePath)
