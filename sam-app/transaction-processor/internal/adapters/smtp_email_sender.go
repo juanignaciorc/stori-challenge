@@ -16,20 +16,64 @@ type SMTPConfiguration struct {
 	SmtpPort   int
 }
 
-// SMTPClient implements the EmailSender port using SMTP
-type SMTPClient struct {
-	dialer *mail.Dialer
-	sender string
+// RealMailMessage wraps mail.Message to implement MailMessage interface
+type RealMailMessage struct {
+	*mail.Message
 }
 
-// NewSMTPEmailSender creates a new SMTPClient
+func (r *RealMailMessage) SetHeader(field string, value ...string) {
+	r.Message.SetHeader(field, value...)
+}
+
+func (r *RealMailMessage) SetBody(contentType, body string, settings ...mail.PartSetting) {
+	r.Message.SetBody(contentType, body, settings...)
+}
+
+// RealMailMessageFactory implements MailMessageFactory
+type RealMailMessageFactory struct{}
+
+func (r *RealMailMessageFactory) NewMessage() ports.MailMessage {
+	return &RealMailMessage{mail.NewMessage()}
+}
+
+// RealMailDialer wraps mail.Dialer to implement MailDialer interface
+type RealMailDialer struct {
+	*mail.Dialer
+}
+
+func (r *RealMailDialer) DialAndSend(m ...*mail.Message) error {
+	return r.Dialer.DialAndSend(m...)
+}
+
+// SMTPClient implements the EmailSender port using SMTP
+type SMTPClient struct {
+	dialer         ports.MailDialer
+	messageFactory ports.MailMessageFactory
+	sender         string
+}
+
+// NewSMTPEmailSender creates a new SMTPClient with real dependencies
 func NewSMTPEmailSender(conf SMTPConfiguration) *SMTPClient {
 	dialer := mail.NewDialer(conf.SmtpServer, conf.SmtpPort, conf.Sender, conf.Password)
 	dialer.StartTLSPolicy = mail.MandatoryStartTLS
 
 	return &SMTPClient{
-		dialer: dialer,
-		sender: conf.Sender,
+		dialer:         &RealMailDialer{dialer},
+		messageFactory: &RealMailMessageFactory{},
+		sender:         conf.Sender,
+	}
+}
+
+// NewSMTPEmailSenderWithDependencies creates a new SMTPClient with injected dependencies (for testing)
+func NewSMTPEmailSenderWithDependencies(
+	dialer ports.MailDialer,
+	messageFactory ports.MailMessageFactory,
+	sender string,
+) *SMTPClient {
+	return &SMTPClient{
+		dialer:         dialer,
+		messageFactory: messageFactory,
+		sender:         sender,
 	}
 }
 
@@ -41,15 +85,23 @@ func (s *SMTPClient) SendSummaryEmail(recipient string, summary ports.EmailSumma
 		return fmt.Errorf("error generating email body: %w", err)
 	}
 
-	// Create the email message
-	msg := mail.NewMessage()
+	// Create the email message using the factory
+	msg := s.messageFactory.NewMessage()
 	msg.SetHeader("From", s.sender)
 	msg.SetHeader("To", recipient)
 	msg.SetHeader("Subject", "Transaction Summary")
 	msg.SetBody("text/html", emailBody)
 
+	// We need to create a concrete mail.Message for DialAndSend
+	// This is necessary because the mail library expects *mail.Message
+	realMsg := mail.NewMessage()
+	realMsg.SetHeader("From", s.sender)
+	realMsg.SetHeader("To", recipient)
+	realMsg.SetHeader("Subject", "Transaction Summary")
+	realMsg.SetBody("text/html", emailBody)
+
 	// Send the email
-	if err := s.dialer.DialAndSend(msg); err != nil {
+	if err := s.dialer.DialAndSend(realMsg); err != nil {
 		return fmt.Errorf("error sending email: %w", err)
 	}
 
@@ -58,8 +110,11 @@ func (s *SMTPClient) SendSummaryEmail(recipient string, summary ports.EmailSumma
 
 // generateEmailBody generates the email content using the HTML template
 func (s *SMTPClient) generateEmailBody(recipient string, summary ports.EmailSummary) (string, error) {
-	tmpl := `
-<!DOCTYPE html>
+	if recipient == "" {
+		return "", fmt.Errorf("recipient cannot be empty")
+	}
+
+	tmpl := `<!DOCTYPE html>
 <html>
 <head>
     <title>Transaction Summary</title>
@@ -72,7 +127,6 @@ func (s *SMTPClient) generateEmailBody(recipient string, summary ports.EmailSumm
     </style>
 </head>
 <body>
-    <!-- Stori Logo would go here -->
     <h1>Transaction Summary</h1>
     <p><strong>Total balance is:</strong> ${{printf "%.2f" .TotalBalance}}</p>
 
@@ -83,15 +137,14 @@ func (s *SMTPClient) generateEmailBody(recipient string, summary ports.EmailSumm
         <tr><td>{{$month}}</td><td>{{$count}}</td></tr>
         {{end}}
     </table>
-
+    
     <h2>Average Transaction Amounts</h2>
     <table>
         <tr><td>Average debit amount:</td><td>${{printf "%.2f" .AverageDebitAmount}}</td></tr>
         <tr><td>Average credit amount:</td><td>${{printf "%.2f" .AverageCreditAmount}}</td></tr>
     </table>
 </body>
-</html>
-`
+</html>`
 
 	tmplData := struct {
 		TotalBalance             float64

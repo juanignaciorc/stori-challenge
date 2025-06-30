@@ -1,9 +1,6 @@
 module transaction-processor
 
 go 1.23
-
-toolchain go1.23.10
-
 require (
 	github.com/aws/aws-lambda-go v1.36.1
 	github.com/aws/aws-sdk-go-v2 v1.21.0

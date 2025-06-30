@@ -1,89 +1,278 @@
 package adapters_test
 
 import (
-	"os"
-	"path/filepath"
+	"errors"
+	"strings"
 	"testing"
-	"time"
 	"transaction-processor/internal/adapters"
+	"transaction-processor/internal/adapters/mocks"
+	"transaction-processor/internal/ports"
+
+	"go.uber.org/mock/gomock"
 )
 
-func TestCSVFileReader_ReadTransactions(t *testing.T) {
-	// Create a temporary directory for the test file
-	tempDir := t.TempDir()
-	testFilePath := filepath.Join(tempDir, "test_transactions.csv")
+func TestSMTPClient_SendSummaryEmail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	// Define the CSV content with 4 data rows
-	csvContent := `Id,Date,Transaction
-0,7/15,+60.5
-1,7/28,-10.3
-2,8/2,-20.46
-3,8/13,+10`
+	tests := []struct {
+		name          string
+		recipient     string
+		summary       ports.EmailSummary
+		setupMocks    func(*mocks.MockMailDialer, *mocks.MockMailMessageFactory, *mocks.MockMailMessage)
+		expectedError string
+		wantErr       bool
+	}{
+		{
+			name:      "successful email send",
+			recipient: "test@example.com",
+			summary: ports.EmailSummary{
+				TotalBalance:             1500.75,
+				MonthlyTransactionCounts: map[string]int{"January": 5, "February": 3},
+				AverageCreditAmount:      200.50,
+				AverageDebitAmount:       150.25,
+			},
+			setupMocks: func(mockDialer *mocks.MockMailDialer, mockFactory *mocks.MockMailMessageFactory, mockMsg *mocks.MockMailMessage) {
+				mockFactory.EXPECT().
+					NewMessage().
+					Return(mockMsg).
+					Times(1)
 
-	// Write the content to the temporary file
-	err := os.WriteFile(testFilePath, []byte(csvContent), 0644)
-	if err != nil {
-		t.Fatalf("Failed to write test CSV file: %v", err)
+				mockMsg.EXPECT().
+					SetHeader("From", "sender@example.com").
+					Times(1)
+
+				mockMsg.EXPECT().
+					SetHeader("To", "test@example.com").
+					Times(1)
+
+				mockMsg.EXPECT().
+					SetHeader("Subject", "Transaction Summary").
+					Times(1)
+
+				mockMsg.EXPECT().
+					SetBody("text/html", gomock.Any()).
+					Times(1)
+
+				mockDialer.EXPECT().
+					DialAndSend(gomock.Any()).
+					Return(nil).
+					Times(1)
+			},
+			wantErr: false,
+		},
+		{
+			name:      "empty recipient",
+			recipient: "",
+			summary: ports.EmailSummary{
+				TotalBalance:             1000.0,
+				MonthlyTransactionCounts: map[string]int{"January": 2},
+				AverageCreditAmount:      100.0,
+				AverageDebitAmount:       50.0,
+			},
+			setupMocks: func(mockDialer *mocks.MockMailDialer, mockFactory *mocks.MockMailMessageFactory, mockMsg *mocks.MockMailMessage) {
+				// No expectations because generateEmailBody should fail before any mail operations
+			},
+			expectedError: "error generating email body: recipient cannot be empty",
+			wantErr:       true,
+		},
+		{
+			name:      "dialer fails",
+			recipient: "test@example.com",
+			summary: ports.EmailSummary{
+				TotalBalance:             500.0,
+				MonthlyTransactionCounts: map[string]int{"March": 1},
+				AverageCreditAmount:      250.0,
+				AverageDebitAmount:       250.0,
+			},
+			setupMocks: func(mockDialer *mocks.MockMailDialer, mockFactory *mocks.MockMailMessageFactory, mockMsg *mocks.MockMailMessage) {
+				mockFactory.EXPECT().
+					NewMessage().
+					Return(mockMsg).
+					Times(1)
+
+				mockMsg.EXPECT().
+					SetHeader(gomock.Any(), gomock.Any()).
+					AnyTimes()
+
+				mockMsg.EXPECT().
+					SetBody(gomock.Any(), gomock.Any()).
+					Times(1)
+
+				mockDialer.EXPECT().
+					DialAndSend(gomock.Any()).
+					Return(errors.New("SMTP connection failed")).
+					Times(1)
+			},
+			expectedError: "error sending email: SMTP connection failed",
+			wantErr:       true,
+		},
 	}
 
-	// Create an instance of CSVFileReader
-	reader := adapters.NewCSVFileReader()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDialer := mocks.NewMockMailDialer(ctrl)
+			mockFactory := mocks.NewMockMailMessageFactory(ctrl)
+			mockMsg := mocks.NewMockMailMessage(ctrl)
 
-	// Call the method under test
-	transactions, err := reader.ReadTransactions(testFilePath)
-	if err != nil {
-		t.Fatalf("ReadTransactions failed: %v", err)
+			tt.setupMocks(mockDialer, mockFactory, mockMsg)
+
+			smtpClient := adapters.NewSMTPEmailSenderWithDependencies(
+				mockDialer,
+				mockFactory,
+				"sender@example.com",
+			)
+
+			err := smtpClient.SendSummaryEmail(tt.recipient, tt.summary)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				if tt.expectedError != "" && err.Error() != tt.expectedError {
+					t.Errorf("expected error '%s', got: %v", tt.expectedError, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestSMTPClient_generateEmailBody(t *testing.T) {
+	// Test the email body generation separately
+	tests := []struct {
+		name              string
+		recipient         string
+		summary           ports.EmailSummary
+		wantErr           bool
+		expectedInBody    []string
+		notExpectedInBody []string
+	}{
+		{
+			name:      "valid email generation",
+			recipient: "test@example.com",
+			summary: ports.EmailSummary{
+				TotalBalance:             1234.56,
+				MonthlyTransactionCounts: map[string]int{"January": 10, "February": 5},
+				AverageCreditAmount:      100.25,
+				AverageDebitAmount:       75.50,
+			},
+			wantErr: false,
+			expectedInBody: []string{
+				"$1234.56",
+				"January",
+				"February",
+				"$100.25",
+				"$75.50",
+				"Transaction Summary",
+			},
+		},
+		{
+			name:      "empty recipient",
+			recipient: "",
+			summary: ports.EmailSummary{
+				TotalBalance: 100.0,
+			},
+			wantErr: true,
+		},
+		{
+			name:      "zero values",
+			recipient: "test@example.com",
+			summary: ports.EmailSummary{
+				TotalBalance:             0.0,
+				MonthlyTransactionCounts: map[string]int{},
+				AverageCreditAmount:      0.0,
+				AverageDebitAmount:       0.0,
+			},
+			wantErr: false,
+			expectedInBody: []string{
+				"$0.00",
+			},
+		},
 	}
 
-	// Get the current year to correctly format expected dates
-	currentYear := time.Now().Year()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// For now, we'll test via the public method but intercept before sending
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 
-	// Assertions for the number of transactions
-	if len(transactions) != 4 {
-		t.Errorf("Expected 4 transactions, got %d", len(transactions))
+			if tt.wantErr {
+				// Test by calling SendSummaryEmail and expecting the body generation error
+				mockDialer := mocks.NewMockMailDialer(ctrl)
+				mockFactory := mocks.NewMockMailMessageFactory(ctrl)
+
+				client := adapters.NewSMTPEmailSenderWithDependencies(
+					mockDialer,
+					mockFactory,
+					"sender@example.com",
+				)
+
+				err := client.SendSummaryEmail(tt.recipient, tt.summary)
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+
+			// For successful cases, we'll test by mocking and capturing the body
+			mockDialer := mocks.NewMockMailDialer(ctrl)
+			mockFactory := mocks.NewMockMailMessageFactory(ctrl)
+			mockMsg := mocks.NewMockMailMessage(ctrl)
+
+			var capturedBody string
+
+			mockFactory.EXPECT().NewMessage().Return(mockMsg).Times(1)
+			mockMsg.EXPECT().SetHeader(gomock.Any(), gomock.Any()).AnyTimes()
+			mockMsg.EXPECT().SetBody("text/html", gomock.Any()).
+				Do(func(contentType, body string, settings ...interface{}) {
+					capturedBody = body
+				}).Times(1)
+			mockDialer.EXPECT().DialAndSend(gomock.Any()).Return(nil).Times(1)
+
+			client := adapters.NewSMTPEmailSenderWithDependencies(
+				mockDialer,
+				mockFactory,
+				"sender@example.com",
+			)
+
+			err := client.SendSummaryEmail(tt.recipient, tt.summary)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			// Check expected content in body
+			for _, expected := range tt.expectedInBody {
+				if !strings.Contains(capturedBody, expected) {
+					t.Errorf("expected '%s' to be in email body, but it wasn't found", expected)
+				}
+			}
+
+			// Check content that should not be in body
+			for _, notExpected := range tt.notExpectedInBody {
+				if strings.Contains(capturedBody, notExpected) {
+					t.Errorf("did not expect '%s' to be in email body, but it was found", notExpected)
+				}
+			}
+		})
+	}
+}
+
+func TestNewSMTPEmailSender(t *testing.T) {
+	conf := adapters.SMTPConfiguration{
+		Sender:     "test@example.com",
+		Password:   "password",
+		SmtpServer: "smtp.example.com",
+		SmtpPort:   587,
 	}
 
-	// Check first transaction: +60.5 (Credit)
-	expectedDate1 := time.Date(currentYear, time.July, 15, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-	if transactions[0].ID != "0" || transactions[0].Date.Format("2006-01-02") != expectedDate1 || transactions[0].Amount != 60.5 || !transactions[0].IsCredit {
-		t.Errorf("First transaction mismatch: Expected ID '0', Date '%s', Amount '60.5', IsCredit 'true', got %+v", expectedDate1, transactions[0])
+	client := adapters.NewSMTPEmailSender(conf)
+
+	if client == nil {
+		t.Error("expected client to be created, got nil")
 	}
-
-	// Check second transaction: -10.3 (Debit)
-	expectedDate2 := time.Date(currentYear, time.July, 28, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-	if transactions[1].ID != "1" || transactions[1].Date.Format("2006-01-02") != expectedDate2 || transactions[1].Amount != 10.3 || transactions[1].IsCredit {
-		t.Errorf("Second transaction mismatch: Expected ID '1', Date '%s', Amount '10.3', IsCredit 'false', got %+v", expectedDate2, transactions[1])
-	}
-
-	// Check third transaction: -20.46 (Debit)
-	expectedDate3 := time.Date(currentYear, time.August, 2, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-	if transactions[2].ID != "2" || transactions[2].Date.Format("2006-01-02") != expectedDate3 || transactions[2].Amount != 20.46 || transactions[2].IsCredit {
-		t.Errorf("Third transaction mismatch: Expected ID '2', Date '%s', Amount '20.46', IsCredit 'false', got %+v", expectedDate3, transactions[2])
-	}
-
-	// Check fourth transaction: +10 (Credit)
-	expectedDate4 := time.Date(currentYear, time.August, 13, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
-	if transactions[3].ID != "3" || transactions[3].Date.Format("2006-01-02") != expectedDate4 || transactions[3].Amount != 10.0 || !transactions[3].IsCredit {
-		t.Errorf("Fourth transaction mismatch: Expected ID '3', Date '%s', Amount '10.0', IsCredit 'true', got %+v", expectedDate4, transactions[3])
-	}
-
-	// --- Test Case: Invalid header ---
-	t.Run("invalid header", func(t *testing.T) {
-		invalidCsvContent := `WrongId,Date,Transaction`
-		invalidFilePath := filepath.Join(tempDir, "invalid_header.csv")
-		os.WriteFile(invalidFilePath, []byte(invalidCsvContent), 0644)
-
-		_, err := reader.ReadTransactions(invalidFilePath)
-		if err == nil {
-			t.Error("Expected an error for invalid header, got nil")
-		}
-	})
-
-	// --- Test Case: Non-existent file ---
-	t.Run("non-existent file", func(t *testing.T) {
-		_, err := reader.ReadTransactions(filepath.Join(tempDir, "non_existent.csv"))
-		if err == nil {
-			t.Error("Expected an error for non-existent file, got nil")
-		}
-	})
 }

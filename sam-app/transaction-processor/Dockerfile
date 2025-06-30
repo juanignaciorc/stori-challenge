@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/golang:1.19 as build-image
+FROM public.ecr.aws/docker/library/golang:1.23 as build-image
 WORKDIR /src
 COPY . .
 RUN go build -o lambda-handler
