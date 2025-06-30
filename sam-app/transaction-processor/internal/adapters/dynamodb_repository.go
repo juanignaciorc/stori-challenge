@@ -89,7 +89,7 @@ func (r *DynamoDBRepository) SaveAccount(accountID string, summary ports.EmailSu
 // GetTransactions retrieves all transactions for an account from DynamoDB
 func (r *DynamoDBRepository) GetTransactions(accountID string) ([]*model.Transaction, error) {
 	// This is a simplified implementation that doesn't filter by account ID
-	// In a real application, you would use a GSI or a query with a filter expression
+	// In a real services, you would use a GSI or a query with a filter expression
 
 	// Scan the table
 	result, err := r.dynamoClient.Scan(context.TODO(), &dynamodb.ScanInput{

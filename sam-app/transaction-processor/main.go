@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 	"transaction-processor/internal/adapters"
-	"transaction-processor/internal/application"
+	"transaction-processor/internal/services"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -87,8 +87,8 @@ func handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 		repository = adapters.NewDynamoDBRepository(dynamoClient, config.TransactionsTable, config.AccountsTable)
 	}
 
-	// Create application service
-	service := application.NewTransactionService(fileReader, emailSender, repository)
+	// Create trx service
+	service := services.NewTransactionService(fileReader, emailSender, repository)
 
 	// Process transactions and send summary
 	filePath := "transactions.csv"
