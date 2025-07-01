@@ -14,7 +14,7 @@ A serverless application that processes transaction files, calculates account st
                        ┌─────────────┐┌─────────────┐                          
                        │   DynamoDB  ││ SMTP Server │                    
                        └─────────────┘└─────────────┘                         
-                                                            
+
 ```
 
 This project implements **Hexagonal Architecture** (ports and adapters) to separate core business logic from external dependencies, making the code more maintainable, testable, and flexible.
@@ -40,6 +40,8 @@ Replace `juanignacioroldan01@gmail.com` with your actual email address where you
 The function will process the transactions from the CSV file and send a summary email to the provided email address. If successful, it will return a message indicating that the transactions were processed successfully.
 
 ### Local Development
+
+**⚠️ DISCLAIMER**: The application will fail when running locally because it requires a local DynamoDB instance to be running. The app is designed to work with AWS DynamoDB and does not include local DynamoDB setup. For full functionality testing, please deploy to AWS or set up DynamoDB Local separately.
 
 1. Build the application:
    ```bash
