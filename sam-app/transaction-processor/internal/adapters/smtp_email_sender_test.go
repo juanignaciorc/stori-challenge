@@ -141,7 +141,6 @@ func TestSMTPClient_SendSummaryEmail(t *testing.T) {
 }
 
 func TestSMTPClient_generateEmailBody(t *testing.T) {
-	// Test the email body generation separately
 	tests := []struct {
 		name              string
 		recipient         string
@@ -151,7 +150,7 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 		notExpectedInBody []string
 	}{
 		{
-			name:      "valid email generation",
+			name:      "valid email generation with multiple months",
 			recipient: "test@example.com",
 			summary: ports.EmailSummary{
 				TotalBalance:             1234.56,
@@ -163,14 +162,18 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 			expectedInBody: []string{
 				"$1234.56",
 				"January",
+				"10",
 				"February",
+				"5",
 				"$100.25",
-				"$75.50",
+				"$-75.50",
 				"Transaction Summary",
+				"Monthly Transaction Count",
+				"Average Transaction Amounts",
 			},
 		},
 		{
-			name:      "empty recipient",
+			name:      "empty recipient should fail",
 			recipient: "",
 			summary: ports.EmailSummary{
 				TotalBalance: 100.0,
@@ -178,7 +181,7 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "zero values",
+			name:      "zero values should format correctly",
 			recipient: "test@example.com",
 			summary: ports.EmailSummary{
 				TotalBalance:             0.0,
@@ -189,18 +192,57 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 			wantErr: false,
 			expectedInBody: []string{
 				"$0.00",
+				"$-0.00",
+				"Transaction Summary",
+			},
+		},
+		{
+			name:      "negative balance should format correctly",
+			recipient: "user@test.com",
+			summary: ports.EmailSummary{
+				TotalBalance:             -500.75,
+				MonthlyTransactionCounts: map[string]int{"March": 3, "April": 7},
+				AverageCreditAmount:      200.00,
+				AverageDebitAmount:       150.25,
+			},
+			wantErr: false,
+			expectedInBody: []string{
+				"$-500.75",
+				"March",
+				"3",
+				"April",
+				"7",
+				"$200.00",
+				"$-150.25",
+			},
+		},
+		{
+			name:      "single month transaction",
+			recipient: "single@example.com",
+			summary: ports.EmailSummary{
+				TotalBalance:             999.99,
+				MonthlyTransactionCounts: map[string]int{"December": 1},
+				AverageCreditAmount:      999.99,
+				AverageDebitAmount:       0.0,
+			},
+			wantErr: false,
+			expectedInBody: []string{
+				"$999.99",
+				"December",
+				"1",
+				"$999.99",
+				"$-0.00",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// For now, we'll test via the public method but intercept before sending
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
 			if tt.wantErr {
-				// Test by calling SendSummaryEmail and expecting the body generation error
+				// Test error cases by attempting to send and expecting failure
 				mockDialer := mocks.NewMockMailDialer(ctrl)
 				mockFactory := mocks.NewMockMailMessageFactory(ctrl)
 
@@ -212,24 +254,36 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 
 				err := client.SendSummaryEmail(tt.recipient, tt.summary)
 				if err == nil {
-					t.Errorf("expected error, got nil")
+					t.Errorf("expected error for empty recipient, got nil")
+				}
+				if !strings.Contains(err.Error(), "recipient cannot be empty") {
+					t.Errorf("expected error message about empty recipient, got: %v", err)
 				}
 				return
 			}
 
-			// For successful cases, we'll test by mocking and capturing the body
+			// Test successful email body generation by capturing the body content
 			mockDialer := mocks.NewMockMailDialer(ctrl)
 			mockFactory := mocks.NewMockMailMessageFactory(ctrl)
 			mockMsg := mocks.NewMockMailMessage(ctrl)
 
 			var capturedBody string
 
+			// Set up expectations for successful email generation
 			mockFactory.EXPECT().NewMessage().Return(mockMsg).Times(1)
-			mockMsg.EXPECT().SetHeader(gomock.Any(), gomock.Any()).AnyTimes()
+
+			// Capture headers
+			mockMsg.EXPECT().SetHeader("From", "sender@example.com").Times(1)
+			mockMsg.EXPECT().SetHeader("To", tt.recipient).Times(1)
+			mockMsg.EXPECT().SetHeader("Subject", "Transaction Summary").Times(1)
+
+			// Capture the email body
 			mockMsg.EXPECT().SetBody("text/html", gomock.Any()).
 				Do(func(contentType, body string, settings ...interface{}) {
 					capturedBody = body
 				}).Times(1)
+
+			// Mock successful sending
 			mockDialer.EXPECT().DialAndSend(gomock.Any()).Return(nil).Times(1)
 
 			client := NewSMTPEmailSenderWithDependencies(
@@ -240,22 +294,32 @@ func TestSMTPClient_generateEmailBody(t *testing.T) {
 
 			err := client.SendSummaryEmail(tt.recipient, tt.summary)
 			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+				t.Fatalf("unexpected error: %v", err)
 			}
 
-			// Check expected content in body
+			// Verify the captured body contains expected content
 			for _, expected := range tt.expectedInBody {
 				if !strings.Contains(capturedBody, expected) {
-					t.Errorf("expected '%s' to be in email body, but it wasn't found", expected)
+					t.Errorf("expected '%s' to be in email body, but it wasn't found.\nActual body:\n%s", expected, capturedBody)
 				}
 			}
 
-			// Check content that should not be in body
+			// Verify the captured body doesn't contain unexpected content
 			for _, notExpected := range tt.notExpectedInBody {
 				if strings.Contains(capturedBody, notExpected) {
-					t.Errorf("did not expect '%s' to be in email body, but it was found", notExpected)
+					t.Errorf("did not expect '%s' to be in email body, but it was found.\nActual body:\n%s", notExpected, capturedBody)
 				}
+			}
+
+			// Additional validations for HTML structure
+			if !strings.Contains(capturedBody, "<!DOCTYPE html>") {
+				t.Error("email body should contain HTML DOCTYPE declaration")
+			}
+			if !strings.Contains(capturedBody, "<html>") || !strings.Contains(capturedBody, "</html>") {
+				t.Error("email body should be properly formatted HTML")
+			}
+			if !strings.Contains(capturedBody, "<table>") {
+				t.Error("email body should contain HTML tables for transaction data")
 			}
 		})
 	}
