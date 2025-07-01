@@ -5,29 +5,39 @@ A serverless application that processes transaction files, calculates account st
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  API Gateway │────▶│    Lambda   │────▶│     S3      │     │    SMTP     │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-                          │                                        ▲
-                          │                                        │
-                          ▼                                        │
-                    ┌─────────────┐                         ┌─────────────┐
-                    │   DynamoDB  │                         │  Email      │
-                    └─────────────┘                         │  Summary    │
-                                                            └─────────────┘
+┌─────────────┐      ┌───────────────────────── ┐     ┌─────────────┐     
+│  API Gateway │────▶│    Lambda -              │────▶│      S3      │   
+└─────────────┘      └──────────────────────────┘     └─────────────┘     
+                          │                  │                                    
+                          │                  │                                    
+                          ▼                  ▼                                    
+                       ┌─────────────┐┌─────────────┐                          
+                       │   DynamoDB  ││ SMTP Server │                    
+                       └─────────────┘└─────────────┘                         
+                                                            
 ```
 
 This project implements **Hexagonal Architecture** (ports and adapters) to separate core business logic from external dependencies, making the code more maintainable, testable, and flexible.
 
 ## Quick Start
 
-### Test the Deployed Lambda
+# Testing Transaction Processor Lambda Function
+
+Based on your deployed Lambda function, here are several ways to test it:
+
+## 1. Testing via API Gateway Endpoint
+
+The simplest way to test your Lambda function is by making a POST request to the API Gateway endpoint that was provided in the deployment outputs:
 
 ```bash
 curl -X POST https://7a96wdh36m.execute-api.us-east-1.amazonaws.com/Prod/process-transactions/ \
   -H "Content-Type: application/json" \
-  -d '{"email": "your-email-here@gmail.com"}'
+  -d '{"email": "juanignacioroldan01@gmail.com"}'
 ```
+
+Replace `juanignacioroldan01@gmail.com` with your actual email address where you want to receive the transaction summary.
+
+The function will process the transactions from the CSV file and send a summary email to the provided email address. If successful, it will return a message indicating that the transactions were processed successfully.
 
 ### Local Development
 
@@ -47,7 +57,6 @@ curl -X POST https://7a96wdh36m.execute-api.us-east-1.amazonaws.com/Prod/process
      -H "Content-Type: application/json" \
      -d '{"email": "your-email@example.com"}'
    ```
-
 ### Deployment
 
 ```bash
